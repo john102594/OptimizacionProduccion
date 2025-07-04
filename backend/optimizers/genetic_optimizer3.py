@@ -13,8 +13,6 @@ def assign_jobs_to_machines(jobs_df, job_order):
         machine_last_impression_type[machine] = None
 
     unscheduled_jobs_count = 0
-    total_meters_scheduled = 0.0
-
     job_data_map = {idx: row for idx, row in jobs_df.iterrows()}
 
     for job_idx in job_order:
@@ -44,42 +42,79 @@ def assign_jobs_to_machines(jobs_df, job_order):
             schedule_per_machine[machine].append(job)
             machine_current_time[machine] += total_job_duration
             machine_last_impression_type[machine] = job_row['tipo_de_impresion']
-            total_meters_scheduled += job_row['metros_requeridos'] # Sumar metros de trabajos programados
         else:
             unscheduled_jobs_count += 1
 
     makespan = max(machine_current_time.values()) if machine_current_time else 0.0
     
-    return schedule_per_machine, makespan, unscheduled_jobs_count, total_meters_scheduled
+    return schedule_per_machine, makespan, unscheduled_jobs_count
 
 def calculate_fitness(job_order, jobs_df, total_jobs):
-    _, makespan, unscheduled_jobs_count, total_meters_scheduled = assign_jobs_to_machines(jobs_df, job_order)
+    """
+    Función de fitness simple optimizada para metros producidos
+    """
+    schedule_per_machine, makespan, unscheduled_jobs_count = assign_jobs_to_machines(jobs_df, job_order)
     
-    # Penalizar fuertemente los trabajos no programados
-    penalty_unscheduled_jobs = unscheduled_jobs_count * 1000000000  # Penalización muy alta
+    # Calcular metros totales producidos
+    total_metros_producidos = 0
+    for machine_schedule in schedule_per_machine.values():
+        for job in machine_schedule:
+            total_metros_producidos += job['metros_requeridos']
     
-    # Penalizar el makespan para fomentar cronogramas más cortos, pero menos que los trabajos no programados
-    penalty_makespan = makespan * 1000 # Penalización por makespan
+    # Penalización por trabajos no programados
+    penalty = unscheduled_jobs_count * 1000
+    
+    # Fitness basado en metros producidos
+    if total_metros_producidos == 0:
+        return 0.0
+    
+    # Bonificación por eficiencia de tiempo
+    time_bonus = 1.0
+    if makespan > 0:
+        time_bonus = min(2.0, 24.0 / makespan)  # Bonifica si termina antes
+    
+    fitness = total_metros_producidos * time_bonus - penalty
+    return max(0.0, fitness)
 
-    # La aptitud es la cantidad de metros programados, menos las penalizaciones.
-    # Queremos maximizar este valor.
-    fitness = total_meters_scheduled - penalty_unscheduled_jobs - penalty_makespan
-
-    # Asegurarse de que la aptitud no sea negativa si hay muchas penalizaciones
-    if fitness < 0: 
-        fitness = 0.0
-
-    return fitness
-
-def initialize_population(pop_size, num_jobs):
+def initialize_population_fast(pop_size, num_jobs, jobs_df):
+    """
+    Inicialización rápida con heurísticas básicas
+    """
     population = []
-    for _ in range(pop_size):
+    
+    # 50% población aleatoria
+    for _ in range(pop_size // 2):
         chromosome = list(range(num_jobs))
         random.shuffle(chromosome)
         population.append(chromosome)
+    
+    # 25% ordenado por metros (mayor primero)
+    metros_sorted = sorted(range(num_jobs), 
+                          key=lambda i: jobs_df.iloc[i]['metros_requeridos'], 
+                          reverse=True)
+    population.append(metros_sorted)
+    
+    # 25% ordenado por eficiencia
+    efficiency_sorted = sorted(range(num_jobs), 
+                              key=lambda i: jobs_df.iloc[i]['eficiencia'], 
+                              reverse=True)
+    population.append(efficiency_sorted)
+    
+    # Llenar resto con variaciones simples
+    base_solutions = [metros_sorted, efficiency_sorted]
+    while len(population) < pop_size:
+        base = random.choice(base_solutions).copy()
+        # Mutación simple
+        idx1, idx2 = random.sample(range(len(base)), 2)
+        base[idx1], base[idx2] = base[idx2], base[idx1]
+        population.append(base)
+    
     return population
 
 def selection(population, fitnesses, num_parents):
+    """
+    Selección por torneo simple
+    """
     parents = []
     for _ in range(num_parents):
         tournament_size = 3
@@ -93,6 +128,9 @@ def selection(population, fitnesses, num_parents):
     return parents
 
 def crossover(parent1, parent2):
+    """
+    Crossover simple (Order Crossover)
+    """
     size = len(parent1)
     child1 = [-1] * size
     child2 = [-1] * size
@@ -121,12 +159,18 @@ def crossover(parent1, parent2):
     return child1, child2
 
 def mutate(chromosome, mutation_rate):
+    """
+    Mutación simple por intercambio
+    """
     if random.random() < mutation_rate:
         idx1, idx2 = random.sample(range(len(chromosome)), 2)
         chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1]
     return chromosome
 
 def optimize_genetic(df):
+    """
+    Algoritmo genético optimizado para metros pero manteniendo velocidad
+    """
     # Calculate time for each job in hours
     df['tiempo_horas'] = df.apply(
         lambda row: row['metros_requeridos'] / (row['velocidad_sugerida'] * 60) if row['velocidad_sugerida'] > 0 else float('inf'),
@@ -139,6 +183,7 @@ def optimize_genetic(df):
         axis=1
     )
 
+    # Parámetros similares al original pero con inicialización mejorada
     POPULATION_SIZE = 50
     NUM_GENERATIONS = 100
     MUTATION_RATE = 0.1
@@ -146,12 +191,14 @@ def optimize_genetic(df):
 
     num_jobs = len(df)
 
-    population = initialize_population(POPULATION_SIZE, num_jobs)
+    # Inicialización mejorada pero rápida
+    population = initialize_population_fast(POPULATION_SIZE, num_jobs, df)
 
     best_chromosome = None
     best_fitness = -1.0
 
     for generation in range(NUM_GENERATIONS):
+        # Usar la nueva función de fitness orientada a metros
         fitnesses = [calculate_fitness(chromosome, df, num_jobs) for chromosome in population]
 
         current_best_fitness = max(fitnesses)
@@ -180,6 +227,6 @@ def optimize_genetic(df):
         
         population = next_population
 
-    optimized_schedule_ga, _, _, _ = assign_jobs_to_machines(df, best_chromosome)
+    optimized_schedule_ga, _, _ = assign_jobs_to_machines(df, best_chromosome)
 
     return optimized_schedule_ga
