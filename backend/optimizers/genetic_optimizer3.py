@@ -227,6 +227,6 @@ def optimize_genetic(df):
         
         population = next_population
 
-    optimized_schedule_ga, _, _ = assign_jobs_to_machines(df, best_chromosome)
+    optimized_schedule_ga, makespan, _ = assign_jobs_to_machines(df, best_chromosome)
 
-    return optimized_schedule_ga
+    return optimized_schedule_ga, makespan, best_fitness

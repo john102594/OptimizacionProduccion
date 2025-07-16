@@ -1,8 +1,8 @@
-import "bootstrap/dist/css/bootstrap.min.css";
 import React, { useState, useEffect } from "react";
 import axios from "axios";
+import { Link } from "react-router-dom";
 
-function GAApp() {
+function AppContent() {
   const [file, setFile] = useState(null);
   const [schedule, setSchedule] = useState(null);
   const [originalSummary, setOriginalSummary] = useState(null);
@@ -55,7 +55,7 @@ function GAApp() {
 
     try {
       const response = await axios.post(
-        "http://localhost:8000/upload-ga/",
+        "http://localhost:8000/upload/",
         formData,
         {
           headers: {
@@ -80,14 +80,14 @@ function GAApp() {
 
     try {
       const response = await axios.get(
-        "http://localhost:8000/optimization_results/latest/Genetic"
+        "http://localhost:8000/optimization_results/latest/Greedy"
       );
       if (response.data) {
         setSchedule(JSON.parse(response.data.schedule_details));
         console.log("Loaded Schedule from DB:", JSON.parse(response.data.schedule_details));
         setError(null);
       } else {
-        setError("No previous Genetic optimization found.");
+        setError("No previous Greedy optimization found.");
       }
     } catch (error) {
       setError("Error loading last optimization: " + error.message);
@@ -268,4 +268,4 @@ function GAApp() {
   );
 }
 
-export default GAApp;
+export default AppContent;

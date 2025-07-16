@@ -95,4 +95,12 @@ def optimize_greedy(df):
         if not scheduled_this_iteration and len(scheduled_job_indices) < len(df_sorted):
             break
 
-    return schedule_per_machine
+    # Calculate total time for the entire schedule
+    total_time = 0.0
+    for machine_schedule in schedule_per_machine.values():
+        if machine_schedule:
+            total_time = max(total_time, machine_schedule[-1]['hora_fin'])
+
+    unscheduled_jobs_count = len(df_sorted) - len(scheduled_job_indices)
+
+    return schedule_per_machine, total_time, unscheduled_jobs_count
