@@ -1,11 +1,11 @@
 import "bootstrap/dist/css/bootstrap.min.css";
 import React from "react";
 import { Route, Routes, Link } from "react-router-dom";
-import AppContent from "./AppContent";
+import AppContent from "../ui/AppContent";
 import GAApp from "./GAApp";
 import ManagementPage from "./ManagementPage";
 
-function App() {
+const App: React.FC = () => {
   return (
     <div className="container mt-5">
       <h1 className="mb-4">Production Schedule Optimizer</h1>

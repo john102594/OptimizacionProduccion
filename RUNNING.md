@@ -8,18 +8,20 @@ El backend está desarrollado en Python utilizando el framework FastAPI.
 
 ### Requisitos
 
-*   Python 3.9+
-*   pip (administrador de paquetes de Python)
+- Python 3.9+
+- pip (administrador de paquetes de Python)
 
 ### Pasos para correr el Backend
 
 1.  **Navegar al directorio del backend:**
+
     ```bash
     cd backend
     ```
 
 2.  **Instalar las dependencias:**
     Asegúrate de tener `pip` instalado. Luego, instala las librerías necesarias listadas en `requirements.txt`.
+
     ```bash
     pip install -r requirements.txt
     ```
@@ -27,7 +29,7 @@ El backend está desarrollado en Python utilizando el framework FastAPI.
 3.  **Iniciar el servidor FastAPI:**
     Una vez instaladas las dependencias, puedes iniciar el servidor.
     ```bash
-    uvicorn main:app --reload
+    uvicorn backend.main:app --reload
     ```
     El servidor estará disponible por defecto en `http://127.0.0.1:8000`.
 
@@ -37,18 +39,20 @@ El frontend está desarrollado en React.js.
 
 ### Requisitos
 
-*   Node.js (versión recomendada LTS)
-*   npm (administrador de paquetes de Node.js, viene con Node.js)
+- Node.js (versión recomendada LTS)
+- npm (administrador de paquetes de Node.js, viene con Node.js)
 
 ### Pasos para correr el Frontend
 
 1.  **Navegar al directorio del frontend:**
+
     ```bash
     cd frontend
     ```
 
 2.  **Instalar las dependencias:**
     Instala las dependencias de Node.js listadas en `package.json`.
+
     ```bash
     npm install
     ```

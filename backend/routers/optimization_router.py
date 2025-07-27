@@ -18,9 +18,7 @@ router = APIRouter(
     tags=["Optimization"]
 )
 
-async def _process_optimization_request(file: UploadFile, optimizer_func, algorithm_type: str,
-                                       optimization_service: OptimizationService,
-                                       uploaded_file_service: UploadedFileService):
+async def _process_optimization_request(file: UploadFile, optimizer_func, algorithm_type: str, optimization_service: OptimizationService, uploaded_file_service: UploadedFileService):
     contents = await file.read()
     try:
         df = pd.read_excel(io.BytesIO(contents), engine='openpyxl')
