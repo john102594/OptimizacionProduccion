@@ -16,13 +16,25 @@ export interface Schedule {
   [machine: string]: Job[];
 }
 
-export interface Summary {
-  num_references: number;
+export interface MachineSummaryItem {
+  machine: string;
+  total_time: number;
   total_meters: number;
+  setup_time: number;
+  num_jobs: number;
+}
+
+export interface OptimizationSummary {
+  total_time: number;
+  unscheduled_jobs: number;
+  machine_summary: MachineSummaryItem[];
 }
 
 export interface OriginalSummary {
-  [machine: string]: Summary;
+  [machine: string]: {
+    num_references: number;
+    total_meters: number;
+  };
 }
 
 export interface Machine {

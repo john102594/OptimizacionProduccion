@@ -1,16 +1,22 @@
 from ..utils.setup_utils import get_setup_time
 
 class Job:
-    def __init__(self, job_data):
+    def __init__(self, job_data: dict):
         self.data = job_data
         self.referencia = job_data['referencia']
         self.metros_requeridos = job_data['metros_requeridos']
-        self.velocidad_sugerida = job_data['velocidad_sugerida']
+        # Handle both 'velocidad_sugerida' (from original df) and 'velocidad_sugerida_m_min' (from frontend)
+        self.velocidad_sugerida = job_data.get('velocidad_sugerida_m_min', job_data.get('velocidad_sugerida'))
         self.tipo_de_impresion = job_data['tipo_de_impresion']
         self.nivel_de_criticidad = job_data['nivel_de_criticidad']
-        self.maquina_sugerida = job_data['maquina_sugerida']
+        self.maquina_sugerida = job_data.get('maquina_sugerida', None) # Can be None if not explicitly passed
         self.diametro_de_manga = job_data['diametro_de_manga']
-        self.original_index = job_data.name # Keep track of original df index
+
+        # Correctly get original_index from pandas Series if job_data is a Series
+        if hasattr(job_data, 'name'): # Check if it's a pandas Series
+            self.original_index = job_data.name
+        else: # Assume it's a dict from frontend, original_index might be passed explicitly
+            self.original_index = job_data.get('original_index', None)
 
     def get_duration_hours(self) -> float:
         """Calculates the execution time of the job in hours."""

@@ -1,16 +1,18 @@
 import { useState, useEffect } from 'react';
-import { Schedule, OriginalSummary } from '../types/api';
-import { uploadFile, loadLastOptimization } from '../services/apiService';
+import { Schedule, OriginalSummary, OptimizationSummary } from '../types/api';
+import { uploadFile, loadLastOptimization, recalculateSchedule } from '../services/apiService';
 
 export const useOptimization = () => {
   const [file, setFile] = useState<File | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [originalSummary, setOriginalSummary] = useState<OriginalSummary | null>(null);
+  const [excelSummary, setExcelSummary] = useState<OriginalSummary | null>(null); // Summary from original Excel data
+  const [optimizationSummary, setOptimizationSummary] = useState<OptimizationSummary | null>(null); // Summary from optimization/recalculation
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadLoading, setIsLoadLoading] = useState(false);
+  const [isRecalculating, setIsRecalculating] = useState(false);
 
-  const calculateSummary = (scheduleData: Schedule | null) => {
+  const calculateExcelSummary = (scheduleData: Schedule | null) => {
     const summary: OriginalSummary = {};
     if (scheduleData) {
       Object.entries(scheduleData).forEach(([machine, machineSchedule]) => {
@@ -30,7 +32,7 @@ export const useOptimization = () => {
   };
 
   useEffect(() => {
-    setOriginalSummary(calculateSummary(schedule));
+    setExcelSummary(calculateExcelSummary(schedule));
   }, [schedule]);
 
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,11 +50,13 @@ export const useOptimization = () => {
     setIsLoading(true);
     setError(null);
     setSchedule(null);
-    setOriginalSummary(null);
+    setExcelSummary(null);
+    setOptimizationSummary(null);
 
     try {
-      const scheduleData = await uploadFile(file, '/upload/');
-      setSchedule(scheduleData);
+      const response = await uploadFile(file, '/upload/');
+      setSchedule(response.optimized_schedule);
+      setOptimizationSummary(response.summary);
     } catch (err: any) {
       setError(`Error uploading file: ${err.message}`);
     } finally {
@@ -64,11 +68,14 @@ export const useOptimization = () => {
     setIsLoadLoading(true);
     setError(null);
     setSchedule(null);
-    setOriginalSummary(null);
+    setExcelSummary(null);
+    setOptimizationSummary(null);
 
     try {
       const scheduleData = await loadLastOptimization('Greedy');
       setSchedule(scheduleData);
+      // Note: loadLastOptimization does not return a full OptimizationSummary from backend
+      // A basic summary could be calculated here if needed for display
     } catch (err: any) {
       setError(`Error loading last optimization: ${err.message}`);
     } finally {
@@ -76,15 +83,36 @@ export const useOptimization = () => {
     }
   };
 
+  const recalculateScheduleTimes = async () => {
+    if (!schedule) return;
+
+    setIsRecalculating(true);
+    setError(null);
+
+    try {
+      const response = await recalculateSchedule(schedule);
+      setSchedule(response.optimized_schedule);
+      setOptimizationSummary(response.summary);
+    } catch (err: any) {
+      setError(`Error recalculating schedule: ${err.message}`);
+    } finally {
+      setIsRecalculating(false);
+    }
+  };
+
   return {
     file,
     schedule,
-    originalSummary,
+    setSchedule, // Expose setSchedule for reordering
+    excelSummary,
+    optimizationSummary,
     error,
     isLoading,
     isLoadLoading,
+    isRecalculating,
     handleFileChange,
     handleUpload,
     handleLoadLastOptimization,
+    recalculateScheduleTimes,
   };
 };

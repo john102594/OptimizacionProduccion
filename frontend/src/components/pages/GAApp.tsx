@@ -1,16 +1,23 @@
-import React from 'react';
-import { useGeneticOptimization } from '../../hooks/useGeneticOptimization';
+import React from "react";
+import { useGeneticOptimization } from "../../hooks/useGeneticOptimization";
+import { Job } from "../../types/api"; // Import Job type
 
 const GAApp: React.FC = () => {
   const {
     schedule,
-    originalSummary,
+    setSchedule, // Add setSchedule
+    excelSummary,
+    optimizationSummary, // Add optimizationSummary
     error,
     isLoading,
     isLoadLoading,
+    isRecalculating, // Add isRecalculating
     handleFileChange,
     handleUpload,
     handleLoadLastOptimization,
+    recalculateScheduleTimes, // Add recalculateScheduleTimes
+    handleMoveJob, // Add handleMoveJob
+    handleOrderChange, // Add handleOrderChange
   } = useGeneticOptimization();
 
   return (
@@ -29,7 +36,7 @@ const GAApp: React.FC = () => {
           <button
             className="btn btn-primary me-2"
             onClick={handleUpload}
-            disabled={isLoading || isLoadLoading}
+            disabled={isLoading || isLoadLoading || isRecalculating}
           >
             {isLoading ? (
               <span
@@ -42,9 +49,9 @@ const GAApp: React.FC = () => {
             )}
           </button>
           <button
-            className="btn btn-secondary"
+            className="btn btn-secondary me-2"
             onClick={handleLoadLastOptimization}
-            disabled={isLoading || isLoadLoading}
+            disabled={isLoading || isLoadLoading || isRecalculating}
           >
             {isLoadLoading ? (
               <span
@@ -56,6 +63,23 @@ const GAApp: React.FC = () => {
               "Load Last Optimization"
             )}
           </button>
+          {schedule && Object.keys(schedule).length > 0 && (
+            <button
+              className="btn btn-info"
+              onClick={recalculateScheduleTimes}
+              disabled={isLoading || isLoadLoading || isRecalculating}
+            >
+              {isRecalculating ? (
+                <span
+                  className="spinner-border spinner-border-sm"
+                  role="status"
+                  aria-hidden="true"
+                ></span>
+              ) : (
+                "Recalculate Times"
+              )}
+            </button>
+          )}
         </div>
       </div>
 
@@ -71,10 +95,16 @@ const GAApp: React.FC = () => {
         </div>
       )}
 
+      {isRecalculating && (
+        <div className="alert alert-info mt-4" role="alert">
+          Recalculating times... Please wait.
+        </div>
+      )}
+
       {schedule && Object.keys(schedule).length > 0 && (
         <div className="mt-5">
           <h2>Optimized Schedule per Machine</h2>
-          {originalSummary && (
+          {excelSummary && (
             <div className="card mb-4">
               <div className="card-body">
                 <h5 className="card-title">
@@ -89,7 +119,7 @@ const GAApp: React.FC = () => {
                     </tr>
                   </thead>
                   <tbody>
-                    {Object.entries(originalSummary)
+                    {Object.entries(excelSummary)
                       .sort(([machineA], [machineB]) =>
                         machineA.localeCompare(machineB)
                       )
@@ -105,13 +135,13 @@ const GAApp: React.FC = () => {
                     <tr>
                       <th>Total</th>
                       <th>
-                        {Object.values(originalSummary).reduce(
+                        {Object.values(excelSummary).reduce(
                           (sum, summary) => sum + summary.num_references,
                           0
                         )}
                       </th>
                       <th>
-                        {Object.values(originalSummary).reduce(
+                        {Object.values(excelSummary).reduce(
                           (sum, summary) => sum + summary.total_meters,
                           0
                         )}
@@ -122,6 +152,97 @@ const GAApp: React.FC = () => {
               </div>
             </div>
           )}
+
+          {optimizationSummary && (
+            <div className="card mb-4">
+              <div className="card-body">
+                <h5 className="card-title">Optimization Summary</h5>
+                <table className="table table-bordered table-sm">
+                  <thead>
+                    <tr>
+                      <th>Total Time (Hours)</th>
+                      <th>Unscheduled Jobs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>{optimizationSummary.total_time.toFixed(2)}</td>
+                      <td>{optimizationSummary.unscheduled_jobs}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <h6>Machine Details:</h6>
+                <table className="table table-bordered table-sm">
+                  <thead>
+                    <tr>
+                      <th>Machine</th>
+                      <th>Total Time (Hours)</th>
+                      <th>Total Meters</th>
+                      <th>Setup Time (Hours)</th>
+                      <th>Number of Jobs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {optimizationSummary.machine_summary.map((ms, index) => (
+                      <tr key={index}>
+                        <td>{ms.machine}</td>
+                        <td>{ms.total_time.toFixed(2)}</td>
+                        <td>{ms.total_meters.toFixed(2)}</td>
+                        <td>{ms.setup_time.toFixed(2)}</td>
+                        <td>{ms.num_jobs}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {optimizationSummary && (
+            <div className="card mb-4">
+              <div className="card-body">
+                <h5 className="card-title">Optimization Summary</h5>
+                <table className="table table-bordered table-sm">
+                  <thead>
+                    <tr>
+                      <th>Total Time (Hours)</th>
+                      <th>Unscheduled Jobs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <tr>
+                      <td>{optimizationSummary.total_time.toFixed(2)}</td>
+                      <td>{optimizationSummary.unscheduled_jobs}</td>
+                    </tr>
+                  </tbody>
+                </table>
+                <h6>Machine Details:</h6>
+                <table className="table table-bordered table-sm">
+                  <thead>
+                    <tr>
+                      <th>Machine</th>
+                      <th>Total Time (Hours)</th>
+                      <th>Total Meters</th>
+                      <th>Setup Time (Hours)</th>
+                      <th>Number of Jobs</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {optimizationSummary.machine_summary.map((ms, index) => (
+                      <tr key={index}>
+                        <td>{ms.machine}</td>
+                        <td>{ms.total_time.toFixed(2)}</td>
+                        <td>{ms.total_meters.toFixed(2)}</td>
+                        <td>{ms.setup_time.toFixed(2)}</td>
+                        <td>{ms.num_jobs}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
           {Object.entries(schedule)
             .sort(([machineA], [machineB]) => machineA.localeCompare(machineB))
             .map(([machine, machineSchedule]) => (
@@ -139,34 +260,86 @@ const GAApp: React.FC = () => {
                                 .replace(/\b\w/g, (l) => l.toUpperCase())}
                             </th>
                           ))}
+                          <th>Order</th>{" "}
+                          {/* New column for direct order input */}
+                          <th>Actions</th> {/* New column for buttons */}
                         </tr>
                       </thead>
                       <tbody>
-                        {machineSchedule.map((row, index) => (
+                        {machineSchedule.map((row: Job, index: number) => (
                           <tr key={index}>
-                            {Object.values(row).map((value, i) => (
-                              <td key={i}>{value}</td>
+                            {Object.entries(row).map(([key, value], i) => (
+                              <td key={i}>
+                                {typeof value === "number"
+                                  ? value.toFixed(2)
+                                  : value}
+                              </td>
                             ))}
+                            <td>
+                              <input
+                                type="number"
+                                className="form-control form-control-sm"
+                                value={row.orden}
+                                onChange={(e) => {
+                                  const newOrderValue = parseInt(
+                                    e.target.value
+                                  );
+                                  if (!isNaN(newOrderValue)) {
+                                    const updatedSchedule = { ...schedule };
+                                    const machineSchedule = [
+                                      ...updatedSchedule[machine],
+                                    ];
+                                    machineSchedule[index] = {
+                                      ...machineSchedule[index],
+                                      orden: newOrderValue,
+                                    };
+                                    updatedSchedule[machine] = machineSchedule;
+                                    setSchedule(updatedSchedule);
+                                  }
+                                }}
+                                onBlur={(e) =>
+                                  handleOrderChange(
+                                    machine,
+                                    index,
+                                    parseInt(e.target.value)
+                                  )
+                                }
+                                min="1"
+                                max={machineSchedule.length}
+                                style={{ width: "70px" }}
+                              />
+                            </td>
+                            <td>
+                              <div
+                                className="btn-group"
+                                role="group"
+                                aria-label="Move job"
+                              >
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() =>
+                                    handleMoveJob(machine, index, "up")
+                                  }
+                                  disabled={index === 0}
+                                >
+                                  &#9650; {/* Up arrow */}
+                                </button>
+                                <button
+                                  className="btn btn-outline-secondary btn-sm"
+                                  onClick={() =>
+                                    handleMoveJob(machine, index, "down")
+                                  }
+                                  disabled={
+                                    index === machineSchedule.length - 1
+                                  }
+                                >
+                                  &#9660; {/* Down arrow */}
+                                </button>
+                              </div>
+                            </td>
                           </tr>
                         ))}
                       </tbody>
-                      <tfoot>
-                        <tr>
-                          <td
-                            colSpan={Object.keys(machineSchedule[0]).length - 1}
-                          >
-                            <strong>Total Metros:</strong>
-                          </td>
-                          <td>
-                            <strong>
-                              {machineSchedule.reduce(
-                                (sum, job) => sum + job.metros_requeridos,
-                                0
-                              )}
-                            </strong>
-                          </td>
-                        </tr>
-                      </tfoot>
                     </table>
                   </>
                 ) : (

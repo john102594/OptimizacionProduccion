@@ -1,10 +1,10 @@
 import axios from 'axios';
-import { Schedule, Machine, SleeveSet } from '../types/api';
+import { Schedule, Machine, SleeveSet, OptimizationSummary } from '../types/api';
 
 const API_URL = 'http://localhost:8000';
 
 // Optimization Functions
-export const uploadFile = async (file: File, endpoint: string): Promise<Schedule> => {
+export const uploadFile = async (file: File, endpoint: string): Promise<{ optimized_schedule: Schedule, summary: OptimizationSummary }> => {
   const formData = new FormData();
   formData.append('file', file);
 
@@ -13,7 +13,12 @@ export const uploadFile = async (file: File, endpoint: string): Promise<Schedule
       'Content-Type': 'multipart/form-data',
     },
   });
-  return response.data.optimized_schedule;
+  return response.data;
+};
+
+export const recalculateSchedule = async (schedule: Schedule): Promise<{ optimized_schedule: Schedule, summary: OptimizationSummary }> => {
+  const response = await axios.post(`${API_URL}/recalculate-schedule/`, schedule);
+  return response.data;
 };
 
 export const loadLastOptimization = async (algorithm: string): Promise<Schedule> => {
