@@ -1,12 +1,19 @@
-import { useState, useEffect } from 'react';
-import { Schedule, OriginalSummary, OptimizationSummary } from '../types/api';
-import { uploadFile, loadLastOptimization, recalculateSchedule } from '../services/apiService';
+import { useState, useEffect } from "react";
+import { Schedule, OriginalSummary, OptimizationSummary } from "../types/api";
+import {
+  uploadFile,
+  loadLastOptimization,
+  recalculateSchedule,
+} from "../services/apiService";
 
 export const useGeneticOptimization = () => {
   const [file, setFile] = useState<File | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [excelSummary, setExcelSummary] = useState<OriginalSummary | null>(null); // Summary from original Excel data
-  const [optimizationSummary, setOptimizationSummary] = useState<OptimizationSummary | null>(null); // Summary from optimization/recalculation
+  const [excelSummary, setExcelSummary] = useState<OriginalSummary | null>(
+    null
+  ); // Summary from original Excel data
+  const [optimizationSummary, setOptimizationSummary] =
+    useState<OptimizationSummary | null>(null); // Summary from optimization/recalculation
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadLoading, setIsLoadLoading] = useState(false);
@@ -43,7 +50,7 @@ export const useGeneticOptimization = () => {
 
   const handleUpload = async () => {
     if (!file) {
-      setError('Please select a file first.');
+      setError("Please select a file first.");
       return;
     }
 
@@ -54,7 +61,7 @@ export const useGeneticOptimization = () => {
     setOptimizationSummary(null);
 
     try {
-      const response = await uploadFile(file, '/upload-ga/');
+      const response = await uploadFile(file, "/upload-ga/");
       setSchedule(response.optimized_schedule);
       setOptimizationSummary(response.summary);
     } catch (err: any) {
@@ -72,7 +79,7 @@ export const useGeneticOptimization = () => {
     setOptimizationSummary(null);
 
     try {
-      const scheduleData = await loadLastOptimization('Genetic');
+      const scheduleData = await loadLastOptimization("Genetic");
       setSchedule(scheduleData);
       // Note: loadLastOptimization does not return a full OptimizationSummary from backend
       // A basic summary could be calculated here if needed for display
@@ -111,17 +118,26 @@ export const useGeneticOptimization = () => {
     const machineSchedule = [...updatedSchedule[machineName]];
 
     const newIndex = direction === "up" ? jobIndex - 1 : jobIndex + 1;
-
+    console.log("machine", updatedSchedule);
     if (newIndex >= 0 && newIndex < machineSchedule.length) {
       const [movedJob] = machineSchedule.splice(jobIndex, 1);
       machineSchedule.splice(newIndex, 0, movedJob);
       updatedSchedule[machineName] = machineSchedule;
-      await setSchedule(updatedSchedule);
-      // await recalculateScheduleTimes(); // Call recalculate after state update
+      setIsRecalculating(true);
+      setError(null);
+      try {
+        const response = await recalculateSchedule(updatedSchedule);
+        setSchedule(response.optimized_schedule);
+        setOptimizationSummary(response.summary);
+      } catch (err: any) {
+        setError(`Error recalculating schedule: ${err.message}`);
+      } finally {
+        setIsRecalculating(false);
+      }
     }
   };
 
-  const handleOrderChange = (
+  const handleOrderChange = async (
     machineName: string,
     jobIndex: number,
     newOrder: number
@@ -143,7 +159,17 @@ export const useGeneticOptimization = () => {
     machineSchedule.splice(targetIndex, 0, movedJob);
 
     updatedSchedule[machineName] = machineSchedule;
-    setSchedule(updatedSchedule);
+    setIsRecalculating(true);
+    setError(null);
+    try {
+      const response = await recalculateSchedule(updatedSchedule);
+      setSchedule(response.optimized_schedule);
+      setOptimizationSummary(response.summary);
+    } catch (err: any) {
+      setError(`Error recalculating schedule: ${err.message}`);
+    } finally {
+      setIsRecalculating(false);
+    }
     // recalculateScheduleTimes(); // Call recalculate after state update
   };
 

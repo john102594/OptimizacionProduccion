@@ -16,54 +16,9 @@ const AppContent: React.FC = () => {
     handleUpload,
     handleLoadLastOptimization,
     recalculateScheduleTimes,
+    handleMoveJob,
+    handleOrderChange,
   } = useOptimization();
-
-  const handleMoveJob = async (
-    machineName: string,
-    jobIndex: number,
-    direction: "up" | "down"
-  ) => {
-    if (!schedule) return;
-
-    const updatedSchedule = { ...schedule };
-    const machineSchedule = [...updatedSchedule[machineName]];
-
-    const newIndex = direction === "up" ? jobIndex - 1 : jobIndex + 1;
-
-    if (newIndex >= 0 && newIndex < machineSchedule.length) {
-      const [movedJob] = machineSchedule.splice(jobIndex, 1);
-      machineSchedule.splice(newIndex, 0, movedJob);
-      updatedSchedule[machineName] = machineSchedule;
-      await setSchedule(updatedSchedule);
-      // await recalculateScheduleTimes(); // Call recalculate after state update
-    }
-  };
-
-  const handleOrderChange = (
-    machineName: string,
-    jobIndex: number,
-    newOrder: number
-  ) => {
-    if (!schedule) return;
-
-    const updatedSchedule = { ...schedule };
-    const machineSchedule = [...updatedSchedule[machineName]];
-
-    // Ensure newOrder is within valid bounds (1-based index)
-    const targetIndex = Math.max(
-      0,
-      Math.min(newOrder - 1, machineSchedule.length - 1)
-    );
-
-    if (jobIndex === targetIndex) return; // No change needed
-
-    const [movedJob] = machineSchedule.splice(jobIndex, 1);
-    machineSchedule.splice(targetIndex, 0, movedJob);
-
-    updatedSchedule[machineName] = machineSchedule;
-    // setSchedule(updatedSchedule);
-    // recalculateScheduleTimes(); // Call recalculate after state update
-  };
 
   return (
     <div className="container mt-5">

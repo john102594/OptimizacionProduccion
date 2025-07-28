@@ -1,12 +1,19 @@
-import { useState, useEffect } from 'react';
-import { Schedule, OriginalSummary, OptimizationSummary } from '../types/api';
-import { uploadFile, loadLastOptimization, recalculateSchedule } from '../services/apiService';
+import { useState, useEffect } from "react";
+import { Schedule, OriginalSummary, OptimizationSummary } from "../types/api";
+import {
+  uploadFile,
+  loadLastOptimization,
+  recalculateSchedule,
+} from "../services/apiService";
 
 export const useOptimization = () => {
   const [file, setFile] = useState<File | null>(null);
   const [schedule, setSchedule] = useState<Schedule | null>(null);
-  const [excelSummary, setExcelSummary] = useState<OriginalSummary | null>(null); // Summary from original Excel data
-  const [optimizationSummary, setOptimizationSummary] = useState<OptimizationSummary | null>(null); // Summary from optimization/recalculation
+  const [excelSummary, setExcelSummary] = useState<OriginalSummary | null>(
+    null
+  ); // Summary from original Excel data
+  const [optimizationSummary, setOptimizationSummary] =
+    useState<OptimizationSummary | null>(null); // Summary from optimization/recalculation
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [isLoadLoading, setIsLoadLoading] = useState(false);
@@ -43,7 +50,7 @@ export const useOptimization = () => {
 
   const handleUpload = async () => {
     if (!file) {
-      setError('Please select a file first.');
+      setError("Please select a file first.");
       return;
     }
 
@@ -54,7 +61,7 @@ export const useOptimization = () => {
     setOptimizationSummary(null);
 
     try {
-      const response = await uploadFile(file, '/upload/');
+      const response = await uploadFile(file, "/upload/");
       setSchedule(response.optimized_schedule);
       setOptimizationSummary(response.summary);
     } catch (err: any) {
@@ -62,6 +69,42 @@ export const useOptimization = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOrderChange = async (
+    machineName: string,
+    jobIndex: number,
+    newOrder: number
+  ) => {
+    if (!schedule) return;
+
+    const updatedSchedule = { ...schedule };
+    const machineSchedule = [...updatedSchedule[machineName]];
+
+    // Ensure newOrder is within valid bounds (1-based index)
+    const targetIndex = Math.max(
+      0,
+      Math.min(newOrder - 1, machineSchedule.length - 1)
+    );
+
+    if (jobIndex === targetIndex) return; // No change needed
+
+    const [movedJob] = machineSchedule.splice(jobIndex, 1);
+    machineSchedule.splice(targetIndex, 0, movedJob);
+
+    updatedSchedule[machineName] = machineSchedule;
+    setIsRecalculating(true);
+    setError(null);
+    try {
+      const response = await recalculateSchedule(updatedSchedule);
+      setSchedule(response.optimized_schedule);
+      setOptimizationSummary(response.summary);
+    } catch (err: any) {
+      setError(`Error recalculating schedule: ${err.message}`);
+    } finally {
+      setIsRecalculating(false);
+    }
+    // recalculateScheduleTimes(); // Call recalculate after state update
   };
 
   const handleLoadLastOptimization = async () => {
@@ -72,7 +115,7 @@ export const useOptimization = () => {
     setOptimizationSummary(null);
 
     try {
-      const scheduleData = await loadLastOptimization('Greedy');
+      const scheduleData = await loadLastOptimization("Greedy");
       setSchedule(scheduleData);
       // Note: loadLastOptimization does not return a full OptimizationSummary from backend
       // A basic summary could be calculated here if needed for display
@@ -83,7 +126,38 @@ export const useOptimization = () => {
     }
   };
 
+  const handleMoveJob = async (
+    machineName: string,
+    jobIndex: number,
+    direction: "up" | "down"
+  ) => {
+    if (!schedule) return;
+
+    const updatedSchedule = { ...schedule };
+    const machineSchedule = [...updatedSchedule[machineName]];
+
+    const newIndex = direction === "up" ? jobIndex - 1 : jobIndex + 1;
+    console.log("machine", updatedSchedule);
+    if (newIndex >= 0 && newIndex < machineSchedule.length) {
+      const [movedJob] = machineSchedule.splice(jobIndex, 1);
+      machineSchedule.splice(newIndex, 0, movedJob);
+      updatedSchedule[machineName] = machineSchedule;
+      setIsRecalculating(true);
+      setError(null);
+      try {
+        const response = await recalculateSchedule(updatedSchedule);
+        setSchedule(response.optimized_schedule);
+        setOptimizationSummary(response.summary);
+      } catch (err: any) {
+        setError(`Error recalculating schedule: ${err.message}`);
+      } finally {
+        setIsRecalculating(false);
+      }
+    }
+  };
+
   const recalculateScheduleTimes = async () => {
+    console.log(schedule);
     if (!schedule) return;
 
     setIsRecalculating(true);
@@ -114,5 +188,7 @@ export const useOptimization = () => {
     handleUpload,
     handleLoadLastOptimization,
     recalculateScheduleTimes,
+    handleMoveJob,
+    handleOrderChange,
   };
 };
