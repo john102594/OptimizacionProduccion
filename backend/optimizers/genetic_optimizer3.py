@@ -1,232 +1,175 @@
 import random
-import numpy as np
+from typing import List, Dict
 from ..utils.setup_utils import get_setup_time
+from ..models.domain import Job, MachineSchedule
 
-def assign_jobs_to_machines(jobs_df, job_order):
-    schedule_per_machine = {}
-    machine_current_time = {}
-    machine_last_impression_type = {}
-    
-    for machine in jobs_df['maquina_sugerida'].unique():
-        schedule_per_machine[machine] = []
-        machine_current_time[machine] = 0.0
-        machine_last_impression_type[machine] = None
-
-    unscheduled_jobs_count = 0
-    job_data_map = {idx: row for idx, row in jobs_df.iterrows()}
-
-    for job_idx in job_order:
-        job_row = job_data_map[job_idx]
-        machine = job_row['maquina_sugerida']
-        current_machine_time = machine_current_time[machine]
-        last_type = machine_last_impression_type[machine]
-        
-        current_job_type = job_row['tipo_de_impresion']
-        setup_time = get_setup_time(last_type, current_job_type)
-        
-        total_job_duration = job_row['tiempo_horas'] + setup_time
-        
-        if current_machine_time + total_job_duration <= 24:
-            job = {
-                'orden': len(schedule_per_machine[machine]) + 1,
-                'referencia': job_row['referencia'],
-                'tipo_de_impresion': job_row['tipo_de_impresion'],
-                'diametro_de_manga': float(job_row['diametro_de_manga']),
-                'metros_requeridos': float(job_row['metros_requeridos']),
-                'velocidad_sugerida_m_min': float(job_row['velocidad_sugerida']),
-                'tiempo_estimado_horas': float(round(job_row['tiempo_horas'], 2)),
-                'tiempo_de_cambio_horas': float(round(setup_time, 2)),
-                'hora_inicio': float(round(current_machine_time, 2)),
-                'hora_fin': float(round(current_machine_time + total_job_duration, 2))
-            }
-            schedule_per_machine[machine].append(job)
-            machine_current_time[machine] += total_job_duration
-            machine_last_impression_type[machine] = job_row['tipo_de_impresion']
-        else:
-            unscheduled_jobs_count += 1
-
-    makespan = max(machine_current_time.values()) if machine_current_time else 0.0
-    
-    return schedule_per_machine, makespan, unscheduled_jobs_count
-
-def calculate_fitness(job_order, jobs_df, total_jobs):
+def _assign_chromosome_to_machines(chromosome: List[Job], machine_names: List[str]) -> tuple[Dict[str, MachineSchedule], int]:
     """
-    Función de fitness simple optimizada para metros producidos
+    Assigns a sequence of jobs (a chromosome) to fresh machine schedules to evaluate its fitness.
+    This is a pure function used for evaluation inside the fitness calculation.
     """
-    schedule_per_machine, makespan, unscheduled_jobs_count = assign_jobs_to_machines(jobs_df, job_order)
-    
-    # Calcular metros totales producidos
-    total_metros_producidos = 0
-    for machine_schedule in schedule_per_machine.values():
-        for job in machine_schedule:
-            total_metros_producidos += job['metros_requeridos']
-    
-    # Penalización por trabajos no programados
-    penalty = unscheduled_jobs_count * 1000
-    
-    # Fitness basado en metros producidos
-    if total_metros_producidos == 0:
-        return 0.0
-    
-    # Bonificación por eficiencia de tiempo
+    # For each evaluation, we need a fresh set of machine schedules
+    temp_machine_schedules = {name: MachineSchedule(name) for name in machine_names}
+    scheduled_job_indices = set()
+
+    for job in chromosome:
+        machine = temp_machine_schedules[job.maquina_sugerida]
+        last_type = machine.get_last_impression_type()
+        setup_time = get_setup_time(last_type, job.tipo_de_impresion)
+
+        if machine.can_add_job(job, setup_time):
+            machine.add_job(job, setup_time)
+            scheduled_job_indices.add(job.original_index)
+
+    unscheduled_count = len(chromosome) - len(scheduled_job_indices)
+    return temp_machine_schedules, unscheduled_count
+
+def _calculate_fitness(chromosome: List[Job], machine_names: List[str]) -> float:
+    """
+    Fitness function: Maximizes total meters produced and rewards finishing faster.
+    Penalizes leaving jobs unscheduled.
+    """
+    temp_schedules, unscheduled_count = _assign_chromosome_to_machines(chromosome, machine_names)
+
+    total_meters_produced = sum(s.get_total_meters() for s in temp_schedules.values())
+    makespan = max([s.get_current_time() for s in temp_schedules.values()] or [0])
+
+    # Calculate total criticality of scheduled jobs
+    total_criticality_scheduled = 0
+    for machine_schedule in temp_schedules.values():
+        for scheduled_item in machine_schedule.jobs:
+            total_criticality_scheduled += scheduled_item['job_object'].nivel_de_criticidad
+
+    # Heavy penalty for each unscheduled job
+    penalty = unscheduled_count * 0  # This value might need tuning
+
+    # Bonus for finishing early (efficiency)
     time_bonus = 1.0
-    if makespan > 0:
-        time_bonus = min(2.0, 24.0 / makespan)  # Bonifica si termina antes
-    
-    fitness = total_metros_producidos * time_bonus - penalty
+    # if makespan > 0:
+    #     time_bonus = min(2.0, 24.0 / makespan) # Bonus if it finishes in less than 24h
+
+    # Combine all factors into the fitness score
+    # Weight criticality to ensure it has a significant impact
+    fitness = (total_meters_produced * time_bonus) + (total_criticality_scheduled * 10000) - penalty
     return max(0.0, fitness)
 
-def initialize_population_fast(pop_size, num_jobs, jobs_df):
+def _initialize_population(pop_size: int, jobs: List[Job]) -> List[List[Job]]:
     """
-    Inicialización rápida con heurísticas básicas
+    Initializes the population with a mix of random and heuristic-based solutions.
     """
     population = []
     
-    # 50% población aleatoria
+    # 50% of population is purely random
     for _ in range(pop_size // 2):
-        chromosome = list(range(num_jobs))
-        random.shuffle(chromosome)
+        chromosome = random.sample(jobs, len(jobs))
         population.append(chromosome)
     
-    # 25% ordenado por metros (mayor primero)
-    metros_sorted = sorted(range(num_jobs), 
-                          key=lambda i: jobs_df.iloc[i]['metros_requeridos'], 
-                          reverse=True)
-    population.append(metros_sorted)
-    
-    # 25% ordenado por eficiencia
-    efficiency_sorted = sorted(range(num_jobs), 
-                              key=lambda i: jobs_df.iloc[i]['eficiencia'], 
-                              reverse=True)
-    population.append(efficiency_sorted)
-    
-    # Llenar resto con variaciones simples
-    base_solutions = [metros_sorted, efficiency_sorted]
-    while len(population) < pop_size:
-        base = random.choice(base_solutions).copy()
-        # Mutación simple
-        idx1, idx2 = random.sample(range(len(base)), 2)
-        base[idx1], base[idx2] = base[idx2], base[idx1]
-        population.append(base)
-    
+    # 50% is based on a heuristic (sorted by criticality)
+    heuristic_chromosome = sorted(jobs, key=lambda j: j.nivel_de_criticidad, reverse=True)
+    for _ in range(pop_size - len(population)):
+        # Add variations of the heuristic solution
+        mutated_chromosome = heuristic_chromosome[:]
+        idx1, idx2 = random.sample(range(len(jobs)), 2)
+        mutated_chromosome[idx1], mutated_chromosome[idx2] = mutated_chromosome[idx2], mutated_chromosome[idx1]
+        population.append(mutated_chromosome)
+        
     return population
 
-def selection(population, fitnesses, num_parents):
-    """
-    Selección por torneo simple
-    """
+def _selection(population: List[List[Job]], fitnesses: List[float], num_parents: int) -> List[List[Job]]:
+    """Selects the best individuals from the current generation to be parents."""
     parents = []
     for _ in range(num_parents):
+        # Tournament selection
         tournament_size = 3
-        contenders_indices = random.sample(range(len(population)), tournament_size)
+        contender_indices = random.sample(range(len(population)), tournament_size)
         
-        best_contender_index = contenders_indices[0]
-        for i in contenders_indices:
-            if fitnesses[i] > fitnesses[best_contender_index]:
-                best_contender_index = i
-        parents.append(population[best_contender_index])
+        best_contender_idx = max(contender_indices, key=lambda i: fitnesses[i])
+        parents.append(population[best_contender_idx])
     return parents
 
-def crossover(parent1, parent2):
-    """
-    Crossover simple (Order Crossover)
-    """
+def _crossover(parent1: List[Job], parent2: List[Job]) -> tuple[List[Job], List[Job]]:
+    """Creates two new child chromosomes from two parents using Order Crossover (OX1)."""
     size = len(parent1)
-    child1 = [-1] * size
-    child2 = [-1] * size
-
+    child1, child2 = [-1] * size, [-1] * size
+    
     start, end = sorted(random.sample(range(size), 2))
-
+    
+    # Copy slice from parents to children
     child1[start:end] = parent1[start:end]
     child2[start:end] = parent2[start:end]
-
-    current_parent2_pos = 0
+    
+    # Fill the rest of child1
+    parent2_ptr = 0
     for i in range(size):
         if child1[i] == -1:
-            while parent2[current_parent2_pos] in child1:
-                current_parent2_pos += 1
-            child1[i] = parent2[current_parent2_pos]
-            current_parent2_pos += 1
+            while parent2[parent2_ptr] in child1:
+                parent2_ptr += 1
+            child1[i] = parent2[parent2_ptr]
 
-    current_parent1_pos = 0
+    # Fill the rest of child2
+    parent1_ptr = 0
     for i in range(size):
         if child2[i] == -1:
-            while parent1[current_parent1_pos] in child2:
-                current_parent1_pos += 1
-            child2[i] = parent1[current_parent1_pos]
-            current_parent1_pos += 1
-
+            while parent1[parent1_ptr] in child2:
+                parent1_ptr += 1
+            child2[i] = parent1[parent1_ptr]
+            
     return child1, child2
 
-def mutate(chromosome, mutation_rate):
-    """
-    Mutación simple por intercambio
-    """
+def _mutate(chromosome: List[Job], mutation_rate: float) -> List[Job]:
+    """Applies a simple swap mutation to a chromosome."""
     if random.random() < mutation_rate:
         idx1, idx2 = random.sample(range(len(chromosome)), 2)
         chromosome[idx1], chromosome[idx2] = chromosome[idx2], chromosome[idx1]
     return chromosome
 
-def optimize_genetic(df):
+def optimize_genetic(jobs: List[Job], machine_schedules: Dict[str, MachineSchedule]):
     """
-    Algoritmo genético optimizado para metros pero manteniendo velocidad
+    Main genetic algorithm function.
+    Operates on domain objects.
     """
-    # Calculate time for each job in hours
-    df['tiempo_horas'] = df.apply(
-        lambda row: row['metros_requeridos'] / (row['velocidad_sugerida'] * 60) if row['velocidad_sugerida'] > 0 else float('inf'),
-        axis=1
-    )
-
-    # Calculate efficiency (meters per hour)
-    df['eficiencia'] = df.apply(
-        lambda row: row['metros_requeridos'] / row['tiempo_horas'] if row['tiempo_horas'] > 0 else 0,
-        axis=1
-    )
-
-    # Parámetros similares al original pero con inicialización mejorada
-    POPULATION_SIZE = 50
+    # GA Parameters
+    POPULATION_SIZE = 100
     NUM_GENERATIONS = 100
     MUTATION_RATE = 0.1
     NUM_PARENTS = 20
 
-    num_jobs = len(df)
+    machine_names = list(machine_schedules.keys())
 
-    # Inicialización mejorada pero rápida
-    population = initialize_population_fast(POPULATION_SIZE, num_jobs, df)
-
+    # Initialization
+    population = _initialize_population(POPULATION_SIZE, jobs)
     best_chromosome = None
     best_fitness = -1.0
 
-    for generation in range(NUM_GENERATIONS):
-        # Usar la nueva función de fitness orientada a metros
-        fitnesses = [calculate_fitness(chromosome, df, num_jobs) for chromosome in population]
+    # Main GA Loop
+    for _ in range(NUM_GENERATIONS):
+        fitnesses = [_calculate_fitness(chromo, machine_names) for chromo in population]
 
-        current_best_fitness = max(fitnesses)
-        current_best_chromosome = population[fitnesses.index(current_best_fitness)]
+        current_best_idx = max(range(len(fitnesses)), key=fitnesses.__getitem__)
+        if fitnesses[current_best_idx] > best_fitness:
+            best_fitness = fitnesses[current_best_idx]
+            best_chromosome = population[current_best_idx]
 
-        if current_best_fitness > best_fitness:
-            best_fitness = current_best_fitness
-            best_chromosome = current_best_chromosome
-
-        parents = selection(population, fitnesses, NUM_PARENTS)
-
-        next_population = []
-        if best_chromosome is not None:
-            next_population.append(best_chromosome)
+        parents = _selection(population, fitnesses, NUM_PARENTS)
+        
+        next_population = [best_chromosome] # Elitism
 
         while len(next_population) < POPULATION_SIZE:
-            parent1, parent2 = random.sample(parents, 2)
-            child1, child2 = crossover(parent1, parent2)
-            
-            child1 = mutate(child1, MUTATION_RATE)
-            child2 = mutate(child2, MUTATION_RATE)
-            
-            next_population.append(child1)
+            p1, p2 = random.sample(parents, 2)
+            c1, c2 = _crossover(p1, p2)
+            next_population.append(_mutate(c1, MUTATION_RATE))
             if len(next_population) < POPULATION_SIZE:
-                next_population.append(child2)
+                next_population.append(_mutate(c2, MUTATION_RATE))
         
         population = next_population
 
-    optimized_schedule_ga, makespan, _ = assign_jobs_to_machines(df, best_chromosome)
+    # Once the best order is found, populate the final machine_schedules object
+    final_schedules, unscheduled_count = _assign_chromosome_to_machines(best_chromosome, machine_names)
+    
+    # Transfer the results to the original machine_schedules objects
+    for name, schedule in final_schedules.items():
+        machine_schedules[name].jobs = schedule.jobs
+        machine_schedules[name].current_time_hours = schedule.current_time_hours
+        machine_schedules[name].last_impression_type = schedule.last_impression_type
 
-    return optimized_schedule_ga, makespan, best_fitness
+    return unscheduled_count

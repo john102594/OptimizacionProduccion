@@ -1,106 +1,53 @@
 import pandas as pd
 from ..utils.setup_utils import get_setup_time
 
-def optimize_greedy(df):
-    # Calculate time for each job in hours
-    df['tiempo_horas'] = df.apply(
-        lambda row: row['metros_requeridos'] / (row['velocidad_sugerida'] * 60) if row['velocidad_sugerida'] > 0 else float('inf'),
-        axis=1
-    )
+from ..utils.setup_utils import get_setup_time
+from ..models.domain import Job, MachineSchedule
+from typing import List, Dict
 
-    # Calculate efficiency (meters per hour)
-    df['eficiencia'] = df.apply(
-        lambda row: row['metros_requeridos'] / row['tiempo_horas'] if row['tiempo_horas'] > 0 else 0,
-        axis=1
-    )
-
-    df_sorted = df.sort_values(
-        by=['nivel_de_criticidad', 'eficiencia', 'tipo_de_impresion', 'diametro_de_manga'],
-        ascending=[False, False, True, True]
-    ).reset_index(drop=True)
-
-    schedule_per_machine = {}
-    machine_current_time = {}  # To track current time for each machine
-    machine_last_impression_type = {} # To track last impression type for each machine
-    
-    for machine in df['maquina_sugerida'].unique():
-        schedule_per_machine[machine] = []
-        machine_current_time[machine] = 0.0
-        machine_last_impression_type[machine] = None
+def optimize_greedy(jobs: List[Job], machine_schedules: Dict[str, MachineSchedule]):
+    # Sort jobs by criticality and then by impression type as a pre-processing step
+    jobs.sort(key=lambda j: (j.nivel_de_criticidad, j.tipo_de_impresion), reverse=True)
 
     scheduled_job_indices = set()
+    available_jobs = list(jobs)
 
-    while len(scheduled_job_indices) < len(df_sorted):
-        best_job_for_machine = {}
-        
-        for machine in schedule_per_machine.keys():
-            current_machine_time = machine_current_time[machine]
-            last_type = machine_last_impression_type[machine]
+    while len(scheduled_job_indices) < len(jobs):
+        best_job_to_schedule = None
+        best_machine_for_job = None
+        min_setup_time = float('inf')
+
+        # In each iteration, find the best possible job to schedule next across all machines
+        for job in available_jobs:
+            if job.original_index in scheduled_job_indices:
+                continue
+
+            machine_name = job.maquina_sugerida
+            machine = machine_schedules[machine_name]
             
-            best_candidate_job = None
-            min_total_time = float('inf')
-            
-            for idx, job_row in df_sorted.iterrows():
-                if idx in scheduled_job_indices or job_row['maquina_sugerida'] != machine:
-                    continue
-                
-                current_job_type = job_row['tipo_de_impresion']
-                setup_time = get_setup_time(last_type, current_job_type)
-                
-                total_job_duration = job_row['tiempo_horas'] + setup_time
-                
-                if current_machine_time + total_job_duration <= 24:
-                    if best_candidate_job is None or \
-                       job_row['nivel_de_criticidad'] > best_candidate_job['nivel_de_criticidad'] or \
-                       (job_row['nivel_de_criticidad'] == best_candidate_job['nivel_de_criticidad'] and \
-                        job_row['eficiencia'] > best_candidate_job['eficiencia']) or \
-                       (job_row['nivel_de_criticidad'] == best_candidate_job['nivel_de_criticidad'] and \
-                        job_row['eficiencia'] == best_candidate_job['eficiencia'] and \
-                        total_job_duration < min_total_time):
-                        
-                        best_candidate_job = job_row.copy()
-                        best_candidate_job['setup_time_hours'] = setup_time
-                        best_candidate_job['total_duration_with_setup'] = total_job_duration
-                        min_total_time = total_job_duration
-        
-            if best_candidate_job is not None:
-                best_job_for_machine[machine] = best_candidate_job
-        
-        if not best_job_for_machine:
+            last_type = machine.get_last_impression_type()
+            setup_time = get_setup_time(last_type, job.tipo_de_impresion)
+
+            if machine.can_add_job(job, setup_time):
+                # Greedy criteria: prioritize by criticality, then by minimum setup time
+                if best_job_to_schedule is None or \
+                   job.nivel_de_criticidad > best_job_to_schedule.nivel_de_criticidad or \
+                   (job.nivel_de_criticidad == best_job_to_schedule.nivel_de_criticidad and setup_time < min_setup_time):
+                    
+                    best_job_to_schedule = job
+                    best_machine_for_job = machine
+                    min_setup_time = setup_time
+
+        if best_job_to_schedule:
+            # Add the chosen job to the machine's schedule
+            best_machine_for_job.add_job(best_job_to_schedule, min_setup_time)
+            scheduled_job_indices.add(best_job_to_schedule.original_index)
+            available_jobs.remove(best_job_to_schedule)
+        else:
+            # No more jobs can be scheduled on any machine
             break
 
-        scheduled_this_iteration = False
-        for machine, job_to_schedule in best_job_for_machine.items():
-            if job_to_schedule.name not in scheduled_job_indices:
-                current_machine_time = machine_current_time[machine]
-                
-                job = {
-                    'orden': len(schedule_per_machine[machine]) + 1,
-                    'referencia': job_to_schedule['referencia'],
-                    'tipo_de_impresion': job_to_schedule['tipo_de_impresion'],
-                    'diametro_de_manga': float(job_to_schedule['diametro_de_manga']),
-                    'metros_requeridos': float(job_to_schedule['metros_requeridos']),
-                    'velocidad_sugerida_m_min': float(job_to_schedule['velocidad_sugerida']),
-                    'tiempo_estimado_horas': float(round(job_to_schedule['tiempo_horas'], 2)),
-                    'tiempo_de_cambio_horas': float(round(job_to_schedule['setup_time_hours'], 2)),
-                    'hora_inicio': float(round(current_machine_time, 2)),
-                    'hora_fin': float(round(current_machine_time + job_to_schedule['total_duration_with_setup'], 2))
-                }
-                schedule_per_machine[machine].append(job)
-                machine_current_time[machine] += job_to_schedule['total_duration_with_setup']
-                machine_last_impression_type[machine] = job_to_schedule['tipo_de_impresion']
-                scheduled_job_indices.add(job_to_schedule.name)
-                scheduled_this_iteration = True
-        
-        if not scheduled_this_iteration and len(scheduled_job_indices) < len(df_sorted):
-            break
+    unscheduled_jobs_count = len(jobs) - len(scheduled_job_indices)
 
-    # Calculate total time for the entire schedule
-    total_time = 0.0
-    for machine_schedule in schedule_per_machine.values():
-        if machine_schedule:
-            total_time = max(total_time, machine_schedule[-1]['hora_fin'])
-
-    unscheduled_jobs_count = len(df_sorted) - len(scheduled_job_indices)
-
-    return schedule_per_machine, total_time, unscheduled_jobs_count
+    # The machine_schedules dictionary is modified in place, so we don't need to return it
+    return unscheduled_jobs_count

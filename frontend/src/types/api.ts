@@ -1,8 +1,15 @@
 export interface Job {
-  id: number;
-  nombre: string;
+  orden: number;
+  referencia: string;
+  tipo_de_impresion: string;
+  diametro_de_manga: number;
   metros_requeridos: number;
-  // Agrega aquí el resto de las propiedades de un 'job'
+  velocidad_sugerida_m_min: number;
+  nivel_de_criticidad: number;
+  tiempo_estimado_horas: number;
+  tiempo_de_cambio_horas: number;
+  hora_inicio: number;
+  hora_fin: number;
 }
 
 export interface Schedule {
