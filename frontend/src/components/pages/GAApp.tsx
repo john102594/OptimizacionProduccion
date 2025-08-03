@@ -1,24 +1,32 @@
 import React from "react";
+import { Job } from "../../types/api";
 import { useGeneticOptimization } from "../../hooks/useGeneticOptimization";
-import { Job } from "../../types/api"; // Import Job type
 
 const GAApp: React.FC = () => {
   const {
     schedule,
-    setSchedule, // Add setSchedule
+    setSchedule,
     excelSummary,
-    optimizationSummary, // Add optimizationSummary
     error,
     isLoading,
     isLoadLoading,
-    isRecalculating, // Add isRecalculating
+    isRecalculating,
     handleFileChange,
     handleUpload,
     handleLoadLastOptimization,
-    recalculateScheduleTimes, // Add recalculateScheduleTimes
-    handleMoveJob, // Add handleMoveJob
-    handleOrderChange, // Add handleOrderChange
+    recalculateScheduleTimes,
+    handleMoveJob,
+    handleOrderChange,
   } = useGeneticOptimization();
+
+  const getCriticalityColor = (level: number) => {
+    if (level >= 5) return "red";
+    if (level === 4) return "yellow";
+    if (level === 3) return "green";
+    if (level === 2) return "gray";
+    if (level === 1) return "black";
+    return "transparent"; // Default or unknown
+  };
 
   return (
     <div className="container mt-5">
@@ -107,9 +115,7 @@ const GAApp: React.FC = () => {
           {excelSummary && (
             <div className="card mb-4">
               <div className="card-body">
-                <h5 className="card-title">
-                  Global Schedule Summary (From Excel)
-                </h5>
+                <h5 className="card-title">Global Schedule Summary</h5>
                 <table className="table table-bordered table-sm">
                   <thead>
                     <tr>
@@ -153,96 +159,6 @@ const GAApp: React.FC = () => {
             </div>
           )}
 
-          {optimizationSummary && (
-            <div className="card mb-4">
-              <div className="card-body">
-                <h5 className="card-title">Optimization Summary</h5>
-                <table className="table table-bordered table-sm">
-                  <thead>
-                    <tr>
-                      <th>Total Time (Hours)</th>
-                      <th>Unscheduled Jobs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>{optimizationSummary.total_time.toFixed(2)}</td>
-                      <td>{optimizationSummary.unscheduled_jobs}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <h6>Machine Details:</h6>
-                <table className="table table-bordered table-sm">
-                  <thead>
-                    <tr>
-                      <th>Machine</th>
-                      <th>Total Time (Hours)</th>
-                      <th>Total Meters</th>
-                      <th>Setup Time (Hours)</th>
-                      <th>Number of Jobs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {optimizationSummary.machine_summary.map((ms, index) => (
-                      <tr key={index}>
-                        <td>{ms.machine}</td>
-                        <td>{ms.total_time.toFixed(2)}</td>
-                        <td>{ms.total_meters.toFixed(2)}</td>
-                        <td>{ms.setup_time.toFixed(2)}</td>
-                        <td>{ms.num_jobs}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
-          {optimizationSummary && (
-            <div className="card mb-4">
-              <div className="card-body">
-                <h5 className="card-title">Optimization Summary</h5>
-                <table className="table table-bordered table-sm">
-                  <thead>
-                    <tr>
-                      <th>Total Time (Hours)</th>
-                      <th>Unscheduled Jobs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>{optimizationSummary.total_time.toFixed(2)}</td>
-                      <td>{optimizationSummary.unscheduled_jobs}</td>
-                    </tr>
-                  </tbody>
-                </table>
-                <h6>Machine Details:</h6>
-                <table className="table table-bordered table-sm">
-                  <thead>
-                    <tr>
-                      <th>Machine</th>
-                      <th>Total Time (Hours)</th>
-                      <th>Total Meters</th>
-                      <th>Setup Time (Hours)</th>
-                      <th>Number of Jobs</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {optimizationSummary.machine_summary.map((ms, index) => (
-                      <tr key={index}>
-                        <td>{ms.machine}</td>
-                        <td>{ms.total_time.toFixed(2)}</td>
-                        <td>{ms.total_meters.toFixed(2)}</td>
-                        <td>{ms.setup_time.toFixed(2)}</td>
-                        <td>{ms.num_jobs}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-
           {Object.entries(schedule)
             .sort(([machineA], [machineB]) => machineA.localeCompare(machineB))
             .map(([machine, machineSchedule]) => (
@@ -253,28 +169,26 @@ const GAApp: React.FC = () => {
                     <table className="table table-bordered">
                       <thead>
                         <tr>
-                          {Object.keys(machineSchedule[0]).map((key) => (
-                            <th key={key}>
-                              {key
-                                .replace(/_/g, " ")
-                                .replace(/\b\w/g, (l) => l.toUpperCase())}
-                            </th>
-                          ))}
-                          <th>Order</th>{" "}
-                          {/* New column for direct order input */}
-                          <th>Actions</th> {/* New column for buttons */}
+                          <th>Secuencia</th>
+                          {Object.keys(machineSchedule[0])
+                            .filter(
+                              (key) =>
+                                key !== "orden" && key !== "nivel_de_criticidad"
+                            ) // Exclude 'orden' and 'nivel_de_criticidad'
+                            .map((key) => (
+                              <th key={key}>
+                                {key
+                                  .replace(/_/g, " ")
+                                  .replace(/\b\w/g, (l) => l.toUpperCase())}
+                              </th>
+                            ))}
+                          <th>Nivel de Criticidad</th>
+                          <th>Actions</th>
                         </tr>
                       </thead>
                       <tbody>
                         {machineSchedule.map((row: Job, index: number) => (
                           <tr key={index}>
-                            {Object.entries(row).map(([key, value], i) => (
-                              <td key={i}>
-                                {typeof value === "number"
-                                  ? value.toFixed(2)
-                                  : value}
-                              </td>
-                            ))}
                             <td>
                               <input
                                 type="number"
@@ -289,6 +203,7 @@ const GAApp: React.FC = () => {
                                     const machineSchedule = [
                                       ...updatedSchedule[machine],
                                     ];
+                                    console.log(machineSchedule);
                                     machineSchedule[index] = {
                                       ...machineSchedule[index],
                                       orden: newOrderValue,
@@ -308,6 +223,37 @@ const GAApp: React.FC = () => {
                                 max={machineSchedule.length}
                                 style={{ width: "70px" }}
                               />
+                            </td>
+                            {Object.entries(row)
+                              .filter(
+                                ([key]) =>
+                                  key !== "orden" &&
+                                  key !== "nivel_de_criticidad"
+                              )
+                              .map(([key, value], i) => (
+                                <td key={i}>
+                                  {[
+                                    "diametro_de_manga",
+                                    "metros_requeridos",
+                                    "velocidad_sugerida_m_min",
+                                  ].includes(key)
+                                    ? Math.round(Number(value))
+                                    : typeof value === "number"
+                                    ? value.toFixed(2)
+                                    : value}
+                                </td>
+                              ))}
+                            <td>
+                              <div
+                                className="criticality-indicator"
+                                style={{
+                                  backgroundColor: getCriticalityColor(
+                                    row.nivel_de_criticidad
+                                  ),
+                                }}
+                              >
+                                {row.nivel_de_criticidad}
+                              </div>
                             </td>
                             <td>
                               <div
